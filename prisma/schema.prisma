@@ -1,0 +1,976 @@
+// ╔═══════════════════════════════════════════════════════════════════╗
+// ║  Hummy OS — Prisma schema                                          ║
+// ║  Multi-tenant interno: tudo é escopado por organizationId.         ║
+// ╚═══════════════════════════════════════════════════════════════════╝
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────────────
+
+enum UserStatus {
+  active
+  invited
+  suspended
+}
+
+enum OrgStatus {
+  active
+  suspended
+}
+
+enum Role {
+  admin_master
+  owner
+  gestor_trafego
+  vendedora
+  atendimento
+  designer
+  financeiro
+  operacional
+  readonly
+}
+
+enum InviteStatus {
+  pending
+  accepted
+  revoked
+  expired
+}
+
+enum AgentRoleType {
+  admin
+  trafego
+  vendas
+  atendimento
+  criativos
+  analista
+  custom
+}
+
+enum EntityStatus {
+  draft
+  active
+  inactive
+  archived
+}
+
+enum ConversationStatus {
+  active
+  archived
+}
+
+enum MessageRole {
+  user
+  assistant
+  system
+  tool
+}
+
+enum RecommendationStatus {
+  pending
+  approved
+  rejected
+  converted_to_task
+}
+
+enum Severity {
+  low
+  medium
+  high
+  critical
+}
+
+enum ApprovalStatus {
+  pending
+  approved
+  rejected
+  executed
+  failed
+  cancelled
+}
+
+enum RiskLevel {
+  low
+  medium
+  high
+  blocked
+}
+
+enum TaskStatus {
+  pending
+  in_progress
+  waiting_approval
+  completed
+  cancelled
+}
+
+enum TaskPriority {
+  low
+  medium
+  high
+  urgent
+}
+
+enum CreativeType {
+  image
+  video
+  copy
+  script
+  other
+}
+
+enum CreativeStatus {
+  draft
+  in_review
+  approved
+  rejected
+  published
+}
+
+enum LeadStatus {
+  new
+  contacted
+  hot
+  cold
+  won
+  lost
+}
+
+enum SaleStatus {
+  pending
+  paid
+  refunded
+  cancelled
+}
+
+enum KnowledgeStatus {
+  processing
+  ready
+  failed
+  disabled
+}
+
+enum IntegrationType {
+  openclaw
+  meta_ads
+  whatsapp
+  webhook
+  github
+  email
+}
+
+enum IntegrationStatus {
+  not_configured
+  connected
+  error
+  disconnected
+}
+
+enum LogLevel {
+  debug
+  info
+  warning
+  error
+  critical
+}
+
+enum ReportType {
+  daily
+  weekly
+  traffic
+  sales
+  leads
+  ai
+  tasks
+  custom
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Usuários e organizações
+// ─────────────────────────────────────────────────────────────────────
+
+model Organization {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  logoUrl   String?
+  status    OrgStatus @default(active)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  members            OrganizationMember[]
+  invites            Invite[]
+  agents             Agent[]
+  conversations      Conversation[]
+  recommendations    AiRecommendation[]
+  approvals          ApprovalRequest[]
+  tasks              Task[]
+  creatives          Creative[]
+  complianceChecks   ComplianceCheck[]
+  leads              Lead[]
+  sales              Sale[]
+  knowledgeDocuments KnowledgeDocument[]
+  integrations       Integration[]
+  metaConnections    MetaConnection[]
+  auditLogs          AuditLog[]
+  systemLogs         SystemLog[]
+  integrationLogs    IntegrationLog[]
+  aiUsageRecords     AiUsageRecord[]
+  reports            Report[]
+  usageLimits        UsageLimit[]
+}
+
+model User {
+  id           String     @id @default(cuid())
+  name         String
+  email        String     @unique
+  passwordHash String?
+  avatarUrl    String?
+  status       UserStatus @default(invited)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  lastLoginAt  DateTime?
+
+  memberships        OrganizationMember[]
+  sessions           AuthSession[]
+  passwordResets     PasswordResetToken[]
+  invitesSent        Invite[]             @relation("InvitedBy")
+  conversations      Conversation[]
+  assignedTasks      Task[]               @relation("AssignedTo")
+  createdTasks       Task[]               @relation("CreatedBy")
+  approvalsRequested ApprovalRequest[]    @relation("RequestedBy")
+  approvalsApproved  ApprovalRequest[]    @relation("ApprovedBy")
+  approvalsRejected  ApprovalRequest[]    @relation("RejectedBy")
+  approvalEvents     ApprovalEvent[]
+  assignedLeads      Lead[]
+  auditLogs          AuditLog[]
+  aiUsageRecords     AiUsageRecord[]
+}
+
+model OrganizationMember {
+  id             String   @id @default(cuid())
+  userId         String
+  organizationId String
+  role           Role     @default(readonly)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+}
+
+model Invite {
+  id             String       @id @default(cuid())
+  organizationId String
+  email          String
+  role           Role         @default(readonly)
+  tokenHash      String       @unique
+  status         InviteStatus @default(pending)
+  invitedById    String?
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy    User?        @relation("InvitedBy", fields: [invitedById], references: [id])
+
+  @@index([organizationId])
+  @@index([email])
+}
+
+model AuthSession {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  userAgent String?
+  ipAddress String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Agentes IA
+// ─────────────────────────────────────────────────────────────────────
+
+model Agent {
+  id                         String        @id @default(cuid())
+  organizationId             String
+  name                       String
+  slug                       String
+  description                String?
+  avatarUrl                  String?
+  roleType                   AgentRoleType @default(custom)
+  systemPrompt               String        @default("")
+  modelProvider              String        @default("anthropic")
+  modelName                  String        @default("claude-opus-4-8")
+  temperature                Float         @default(0.7)
+  maxTokens                  Int           @default(2048)
+  status                     EntityStatus  @default(active)
+  allowedTools               Json          @default("[]")
+  requiresApprovalForActions Boolean       @default(true)
+  createdAt                  DateTime      @default(now())
+  updatedAt                  DateTime      @updatedAt
+
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversations   Conversation[]
+  recommendations AiRecommendation[]
+  aiUsageRecords  AiUsageRecord[]
+  reports         Report[]
+  usageLimits     UsageLimit[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Chat IA
+// ─────────────────────────────────────────────────────────────────────
+
+model Conversation {
+  id             String             @id @default(cuid())
+  organizationId String
+  userId         String
+  agentId        String?
+  title          String             @default("Nova conversa")
+  status         ConversationStatus @default(active)
+  pinned         Boolean            @default(false)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent        Agent?       @relation(fields: [agentId], references: [id])
+  messages     Message[]
+
+  @@index([organizationId])
+  @@index([userId])
+}
+
+model Message {
+  id             String      @id @default(cuid())
+  conversationId String
+  role           MessageRole
+  content        String
+  metadata       Json        @default("{}")
+  createdAt      DateTime    @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Recomendações da IA
+// ─────────────────────────────────────────────────────────────────────
+
+model AiRecommendation {
+  id                String               @id @default(cuid())
+  organizationId    String
+  agentId           String?
+  type              String
+  title             String
+  description       String
+  severity          Severity             @default(medium)
+  relatedEntityType String?
+  relatedEntityId   String?
+  suggestedAction   Json                 @default("{}")
+  status            RecommendationStatus @default(pending)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agent        Agent?       @relation(fields: [agentId], references: [id])
+
+  @@index([organizationId])
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Aprovações
+// ─────────────────────────────────────────────────────────────────────
+
+model ApprovalRequest {
+  id                 String         @id @default(cuid())
+  organizationId     String
+  requestedByUserId  String?
+  requestedByAgentId String?
+  actionType         String
+  title              String
+  description        String?
+  payload            Json           @default("{}")
+  riskLevel          RiskLevel      @default(medium)
+  status             ApprovalStatus @default(pending)
+  approvedByUserId   String?
+  rejectedByUserId   String?
+  reason             String?
+  result             Json?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  executedAt         DateTime?
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requestedBy  User?           @relation("RequestedBy", fields: [requestedByUserId], references: [id])
+  approvedBy   User?           @relation("ApprovedBy", fields: [approvedByUserId], references: [id])
+  rejectedBy   User?           @relation("RejectedBy", fields: [rejectedByUserId], references: [id])
+  events       ApprovalEvent[]
+
+  @@index([organizationId])
+  @@index([status])
+}
+
+model ApprovalEvent {
+  id         String   @id @default(cuid())
+  approvalId String
+  userId     String?
+  type       String
+  message    String?
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  approval ApprovalRequest @relation(fields: [approvalId], references: [id], onDelete: Cascade)
+  user     User?           @relation(fields: [userId], references: [id])
+
+  @@index([approvalId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Tarefas
+// ─────────────────────────────────────────────────────────────────────
+
+model Task {
+  id                String       @id @default(cuid())
+  organizationId    String
+  title             String
+  description       String?
+  status            TaskStatus   @default(pending)
+  priority          TaskPriority @default(medium)
+  assignedToUserId  String?
+  createdByUserId   String?
+  createdByAgentId  String?
+  dueDate           DateTime?
+  relatedEntityType String?
+  relatedEntityId   String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignedTo   User?        @relation("AssignedTo", fields: [assignedToUserId], references: [id])
+  createdBy    User?        @relation("CreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([organizationId])
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Criativos
+// ─────────────────────────────────────────────────────────────────────
+
+model Creative {
+  id             String         @id @default(cuid())
+  organizationId String
+  title          String
+  description    String?
+  type           CreativeType   @default(image)
+  product        String?
+  status         CreativeStatus @default(draft)
+  fileUrl        String?
+  metadata       Json           @default("{}")
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  versions     CreativeVersion[]
+  reviews      CreativeReview[]
+
+  @@index([organizationId])
+}
+
+model CreativeVersion {
+  id         String   @id @default(cuid())
+  creativeId String
+  version    Int      @default(1)
+  fileUrl    String?
+  content    String?
+  notes      String?
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  creative Creative @relation(fields: [creativeId], references: [id], onDelete: Cascade)
+
+  @@index([creativeId])
+}
+
+model CreativeReview {
+  id         String         @id @default(cuid())
+  creativeId String
+  reviewerId String?
+  status     CreativeStatus
+  notes      String?
+  createdAt  DateTime       @default(now())
+
+  creative Creative @relation(fields: [creativeId], references: [id], onDelete: Cascade)
+
+  @@index([creativeId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Compliance
+// ─────────────────────────────────────────────────────────────────────
+
+model ComplianceCheck {
+  id               String    @id @default(cuid())
+  organizationId   String
+  entityType       String
+  entityId         String?
+  inputText        String?
+  inputImageUrl    String?
+  riskLevel        RiskLevel @default(low)
+  issues           Json      @default("[]")
+  suggestions      Json      @default("[]")
+  status           String    @default("done")
+  checkedByAgentId String?
+  createdAt        DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Leads e vendas
+// ─────────────────────────────────────────────────────────────────────
+
+model Lead {
+  id               String     @id @default(cuid())
+  organizationId   String
+  name             String
+  email            String?
+  phone            String?
+  source           String?
+  status           LeadStatus @default(new)
+  assignedToUserId String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignedTo   User?        @relation(fields: [assignedToUserId], references: [id])
+  notes        LeadNote[]
+  events       LeadEvent[]
+  sales        Sale[]
+
+  @@index([organizationId])
+  @@index([status])
+}
+
+model LeadNote {
+  id        String   @id @default(cuid())
+  leadId    String
+  authorId  String?
+  content   String
+  createdAt DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+}
+
+model LeadEvent {
+  id        String   @id @default(cuid())
+  leadId    String
+  type      String
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+}
+
+model Sale {
+  id             String     @id @default(cuid())
+  organizationId String
+  leadId         String?
+  customerName   String
+  product        String
+  amount         Decimal    @db.Decimal(12, 2)
+  status         SaleStatus @default(paid)
+  source         String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lead         Lead?        @relation(fields: [leadId], references: [id])
+
+  @@index([organizationId])
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Base de conhecimento
+// ─────────────────────────────────────────────────────────────────────
+
+model KnowledgeDocument {
+  id             String          @id @default(cuid())
+  organizationId String
+  title          String
+  content        String?
+  fileUrl        String?
+  mimeType       String?
+  category       String?
+  status         KnowledgeStatus @default(ready)
+  agentId        String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  chunks       KnowledgeChunk[]
+
+  @@index([organizationId])
+}
+
+model KnowledgeChunk {
+  id         String   @id @default(cuid())
+  documentId String
+  index      Int      @default(0)
+  content    String
+  embedding  Json?
+  createdAt  DateTime @default(now())
+
+  document KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Integrações
+// ─────────────────────────────────────────────────────────────────────
+
+model Integration {
+  id             String            @id @default(cuid())
+  organizationId String
+  type           IntegrationType
+  name           String
+  status         IntegrationStatus @default(not_configured)
+  config         Json              @default("{}")
+  lastCheckedAt  DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  credentials  IntegrationCredential[]
+  logs         IntegrationLog[]
+
+  @@unique([organizationId, type])
+  @@index([organizationId])
+}
+
+model IntegrationCredential {
+  id             String   @id @default(cuid())
+  integrationId  String
+  key            String
+  // Valor SEMPRE criptografado em repouso (encryptSecret).
+  encryptedValue String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@unique([integrationId, key])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Meta Ads
+// ─────────────────────────────────────────────────────────────────────
+
+model MetaConnection {
+  id                   String            @id @default(cuid())
+  organizationId       String
+  status               IntegrationStatus @default(not_configured)
+  businessId           String?
+  businessName         String?
+  // Tokens criptografados (encryptSecret) — nunca expostos no frontend.
+  encryptedAccessToken String?
+  tokenExpiresAt       DateTime?
+  lastSyncedAt         DateTime?
+  lastError            String?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  adAccounts   MetaAdAccount[]
+
+  @@unique([organizationId])
+}
+
+model MetaAdAccount {
+  id           String   @id @default(cuid())
+  connectionId String
+  accountId    String
+  name         String?
+  currency     String?
+  pixelId      String?
+  selected     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  connection MetaConnection      @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  campaigns  MetaCampaignCache[]
+
+  @@unique([connectionId, accountId])
+}
+
+model MetaCampaignCache {
+  id          String   @id @default(cuid())
+  adAccountId String
+  campaignId  String
+  name        String?
+  status      String?
+  objective   String?
+  dailyBudget Decimal? @db.Decimal(12, 2)
+  raw         Json     @default("{}")
+  syncedAt    DateTime @default(now())
+
+  adAccount MetaAdAccount      @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+  adsets    MetaAdsetCache[]
+  insights  MetaInsightCache[]
+
+  @@unique([adAccountId, campaignId])
+}
+
+model MetaAdsetCache {
+  id          String   @id @default(cuid())
+  campaignId  String
+  adsetId     String
+  name        String?
+  status      String?
+  dailyBudget Decimal? @db.Decimal(12, 2)
+  raw         Json     @default("{}")
+  syncedAt    DateTime @default(now())
+
+  campaign MetaCampaignCache @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  ads      MetaAdCache[]
+
+  @@unique([campaignId, adsetId])
+}
+
+model MetaAdCache {
+  id       String   @id @default(cuid())
+  adsetId  String
+  adId     String
+  name     String?
+  status   String?
+  raw      Json     @default("{}")
+  syncedAt DateTime @default(now())
+
+  adset    MetaAdsetCache     @relation(fields: [adsetId], references: [id], onDelete: Cascade)
+  insights MetaInsightCache[]
+
+  @@unique([adsetId, adId])
+}
+
+model MetaInsightCache {
+  id          String   @id @default(cuid())
+  level       String // account | campaign | adset | ad
+  refId       String // id da entidade Meta
+  campaignId  String?
+  adId        String?
+  dateStart   DateTime
+  dateStop    DateTime
+  spend       Decimal  @default(0) @db.Decimal(12, 2)
+  impressions Int      @default(0)
+  clicks      Int      @default(0)
+  ctr         Float    @default(0)
+  cpc         Decimal  @default(0) @db.Decimal(12, 4)
+  cpm         Decimal  @default(0) @db.Decimal(12, 4)
+  conversions Int      @default(0)
+  cpa         Decimal? @db.Decimal(12, 2)
+  roas        Float?
+  raw         Json     @default("{}")
+  syncedAt    DateTime @default(now())
+
+  campaign MetaCampaignCache? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  ad       MetaAdCache?       @relation(fields: [adId], references: [id], onDelete: Cascade)
+
+  @@index([level, refId])
+}
+
+model MetaActionRequest {
+  id             String   @id @default(cuid())
+  organizationId String
+  approvalId     String?
+  actionType     String // pause_campaign | update_budget | ...
+  targetType     String // campaign | adset | ad
+  targetId       String
+  payload        Json     @default("{}")
+  status         String   @default("pending")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  runs MetaActionRun[]
+
+  @@index([organizationId])
+}
+
+model MetaActionRun {
+  id         String    @id @default(cuid())
+  actionId   String
+  status     String // running | success | failed
+  before     Json?
+  after      Json?
+  error      String?
+  createdAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  action MetaActionRequest @relation(fields: [actionId], references: [id], onDelete: Cascade)
+
+  @@index([actionId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Logs e auditoria
+// ─────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  organizationId String?
+  userId         String?
+  action         String
+  entityType     String?
+  entityId       String?
+  metadata       Json     @default("{}")
+  ipAddress      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  user         User?         @relation(fields: [userId], references: [id])
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([action])
+}
+
+model SystemLog {
+  id             String   @id @default(cuid())
+  organizationId String?
+  level          LogLevel @default(info)
+  source         String // auth | chat | meta | openclaw | worker | api ...
+  message        String
+  metadata       Json     @default("{}")
+  createdAt      DateTime @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+  @@index([level])
+  @@index([source])
+}
+
+model IntegrationLog {
+  id             String   @id @default(cuid())
+  organizationId String?
+  integrationId  String?
+  provider       String // openclaw | meta_ads | ...
+  level          LogLevel @default(info)
+  action         String
+  message        String?
+  request        Json?
+  response       Json?
+  durationMs     Int?
+  createdAt      DateTime @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  integration  Integration?  @relation(fields: [integrationId], references: [id])
+
+  @@index([organizationId])
+  @@index([provider])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Uso e custos de IA
+// ─────────────────────────────────────────────────────────────────────
+
+model AiUsageRecord {
+  id               String   @id @default(cuid())
+  organizationId   String
+  userId           String?
+  agentId          String?
+  provider         String
+  model            String
+  inputTokens      Int      @default(0)
+  outputTokens     Int      @default(0)
+  totalTokens      Int      @default(0)
+  estimatedCostUsd Decimal  @default(0) @db.Decimal(12, 6)
+  estimatedCostBrl Decimal  @default(0) @db.Decimal(12, 6)
+  createdAt        DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id])
+  agent        Agent?       @relation(fields: [agentId], references: [id])
+
+  @@index([organizationId])
+  @@index([createdAt])
+}
+
+model UsageLimit {
+  id              String   @id @default(cuid())
+  organizationId  String
+  agentId         String?
+  monthlyLimitUsd Decimal  @db.Decimal(12, 2)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agent        Agent?       @relation(fields: [agentId], references: [id])
+
+  @@unique([organizationId, agentId])
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Relatórios
+// ─────────────────────────────────────────────────────────────────────
+
+model Report {
+  id               String     @id @default(cuid())
+  organizationId   String
+  type             ReportType @default(custom)
+  title            String
+  content          String?
+  data             Json       @default("{}")
+  createdByAgentId String?
+  createdAt        DateTime   @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agent        Agent?       @relation(fields: [createdByAgentId], references: [id])
+
+  @@index([organizationId])
+}

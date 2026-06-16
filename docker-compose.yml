@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hummy_os_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hummy
+      POSTGRES_PASSWORD: hummy
+      POSTGRES_DB: hummy_os
+    ports:
+      - "5432:5432"
+    volumes:
+      - hummy_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hummy -d hummy_os"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: hummy_os_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - hummy_redisdata:/data
+
+volumes:
+  hummy_pgdata:
+  hummy_redisdata:
