@@ -32,3 +32,10 @@ npm-debug.log*
 
 # typescript
 *.tsbuildinfo
+
+.open-next
+.dev.vars
+.wrangler
+.env
+.env.local
+
