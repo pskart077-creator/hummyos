@@ -39,3 +39,8 @@ npm-debug.log*
 .env
 .env.local
 
+
+.env.cloudflare
+.env*
+.dev.vars*
+
