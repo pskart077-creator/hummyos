@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { UserPlus, Copy } from "lucide-react";
+import { UserPlus, Copy, Trash2, XCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select } from "@/components/ui/input";
@@ -39,6 +39,7 @@ export function TeamManager({
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
 
   const roles = isAdminMaster
     ? [...ASSIGNABLE_ROLES, "admin_master"]
@@ -48,42 +49,97 @@ export function TeamManager({
     e.preventDefault();
     setSaving(true);
     setInviteUrl(null);
-    const form = new FormData(e.currentTarget);
-    const res = await fetch("/api/auth/invite", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: form.get("email"),
-        role: form.get("role"),
-      }),
-    });
-    const json = await res.json();
-    if (json.ok) {
-      setInviteUrl(json.data.inviteUrl);
-      router.refresh();
-    } else {
-      alert(json.error ?? "Falha ao criar convite");
+    try {
+      const form = new FormData(e.currentTarget);
+      const res = await fetch("/api/auth/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: form.get("email"),
+          role: form.get("role"),
+        }),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        setInviteUrl(json.data.inviteUrl);
+        router.refresh();
+      } else {
+        alert(json.error ?? "Falha ao criar convite");
+      }
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   }
 
   async function changeRole(id: string, role: string) {
-    await fetch(`/api/team/members/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role }),
-    });
-    router.refresh();
+    setBusyAction(`role:${id}`);
+    try {
+      const res = await fetch(`/api/team/members/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role }),
+      });
+      const json = await res.json();
+      if (!json.ok) alert(json.error ?? "Falha ao alterar cargo");
+      router.refresh();
+    } finally {
+      setBusyAction(null);
+    }
   }
 
   async function toggleSuspend(id: string, current: string) {
     const status = current === "suspended" ? "active" : "suspended";
-    await fetch(`/api/team/members/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
-    router.refresh();
+    setBusyAction(`status:${id}`);
+    try {
+      const res = await fetch(`/api/team/members/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      const json = await res.json();
+      if (!json.ok) alert(json.error ?? "Falha ao alterar status");
+      router.refresh();
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function removeMember(id: string, name: string) {
+    if (!window.confirm(`Remover ${name} da equipe?`)) return;
+
+    setBusyAction(`remove:${id}`);
+    try {
+      const res = await fetch(`/api/team/members/${id}`, {
+        method: "DELETE",
+      });
+      const json = await res.json();
+      if (!json.ok) {
+        alert(json.error ?? "Falha ao remover membro");
+        return;
+      }
+      router.refresh();
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function cancelInvite(id: string, email: string) {
+    if (!window.confirm(`Cancelar convite para ${email}?`)) return;
+
+    setBusyAction(`invite:${id}`);
+    try {
+      const res = await fetch(`/api/team/invites/${id}`, {
+        method: "DELETE",
+      });
+      const json = await res.json();
+      if (!json.ok) {
+        alert(json.error ?? "Falha ao cancelar convite");
+        return;
+      }
+      router.refresh();
+    } finally {
+      setBusyAction(null);
+    }
   }
 
   return (
@@ -140,15 +196,28 @@ export function TeamManager({
                   </TD>
                   <TD className="text-xs text-slate-500">{m.lastLoginAt}</TD>
                   {canManage && (
-                    <TD>
+                    <TD className="min-w-48">
                       {m.id !== currentUserId && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => toggleSuspend(m.id, m.status)}
-                        >
-                          {m.status === "suspended" ? "Reativar" : "Suspender"}
-                        </Button>
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            loading={busyAction === `status:${m.id}`}
+                            onClick={() => toggleSuspend(m.id, m.status)}
+                          >
+                            {m.status === "suspended"
+                              ? "Reativar"
+                              : "Suspender"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            loading={busyAction === `remove:${m.id}`}
+                            onClick={() => removeMember(m.id, m.name)}
+                          >
+                            <Trash2 size={14} /> Remover
+                          </Button>
+                        </div>
                       )}
                     </TD>
                   )}
@@ -173,6 +242,7 @@ export function TeamManager({
                   <TH>E-mail</TH>
                   <TH>Cargo</TH>
                   <TH>Criado</TH>
+                  {canManage && <TH></TH>}
                 </TR>
               </THead>
               <tbody>
@@ -181,6 +251,18 @@ export function TeamManager({
                     <TD>{i.email}</TD>
                     <TD>{ROLE_LABELS[i.role as keyof typeof ROLE_LABELS]}</TD>
                     <TD className="text-xs text-slate-500">{i.createdAt}</TD>
+                    {canManage && (
+                      <TD className="text-right">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          loading={busyAction === `invite:${i.id}`}
+                          onClick={() => cancelInvite(i.id, i.email)}
+                        >
+                          <XCircle size={14} /> Cancelar
+                        </Button>
+                      </TD>
+                    )}
                   </TR>
                 ))}
               </tbody>
@@ -223,9 +305,9 @@ export function TeamManager({
             <div>
               <Label htmlFor="role">Cargo</Label>
               <Select id="role" name="role" defaultValue="vendedora">
-                {ASSIGNABLE_ROLES.map((r) => (
+                {roles.map((r) => (
                   <option key={r} value={r}>
-                    {ROLE_LABELS[r]}
+                    {ROLE_LABELS[r as keyof typeof ROLE_LABELS]}
                   </option>
                 ))}
               </Select>

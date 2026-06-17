@@ -106,6 +106,8 @@ npm run worker:dev          # requer REDIS_URL
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | Usuário inicial (seed) |
 | `REDIS_URL` | Redis para filas (opcional) |
 | `OPENCLAW_BASE_URL` / `OPENCLAW_AUTH_TOKEN` / `OPENCLAW_DEFAULT_AGENT_ID` | OpenClaw |
+| `HUMMY_MCP_ORG_ID` / `HUMMY_MCP_AGENT_ID` | MCP interno do Hummy OS |
+| `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` / `SPOTIFY_REDIRECT_URI` / `SPOTIFY_REFRESH_TOKEN` | Spotify |
 | `META_APP_ID` / `META_APP_SECRET` / `META_REDIRECT_URI` / `META_API_VERSION` / `META_ENCRYPTION_SECRET` | Meta Ads |
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `AI_PROVIDER` | Provedor de IA do chat |
 
@@ -125,6 +127,49 @@ npm run worker:dev          # requer REDIS_URL
 Cliente: [`lib/openclaw/client.ts`](lib/openclaw/client.ts) —
 `sendMessageToOpenClaw`, `runAgent`, `checkOpenClawHealth`,
 `listOpenClawAgents`, `createOpenClawRunLog`.
+
+---
+
+## MCP interno do Hummy OS
+
+O Hummy OS também expõe um servidor MCP via stdio para o OpenClaw/Jarvis
+chamar ferramentas internas com escopo fixo por organização.
+
+```bash
+npm run mcp:dev
+```
+
+Ferramentas disponíveis:
+
+- `hummy_system_status`
+- `hummy_create_task`
+- `hummy_request_approval`
+- `hummy_recent_approvals`
+- `hummy_create_lead`
+- `hummy_create_sale`
+- `hummy_register_log`
+- `hummy_get_agent_context`
+- `spotify_current_track`
+- `spotify_pause`
+- `spotify_next`
+- `spotify_previous`
+- `spotify_play`
+
+No OpenClaw, registre o MCP apontando para `workers/mcp.ts` e passando
+`DATABASE_URL`, `HUMMY_MCP_ORG_ID` e `HUMMY_MCP_AGENT_ID` no ambiente.
+
+---
+
+## Spotify
+
+1. Configure `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` e
+   `SPOTIFY_REDIRECT_URI` no `.env`.
+2. Abra `/api/integrations/spotify/login`.
+3. Depois do callback, copie o `SPOTIFY_REFRESH_TOKEN` exibido para o `.env`.
+4. Reinicie o Hummy OS e o MCP.
+
+As ferramentas de player do Spotify exigem uma conta Premium e um dispositivo
+ativo no Spotify.
 
 ---
 
@@ -176,6 +221,7 @@ Serviços: `lib/meta/{client,oauth,campaigns,insights,actions,sync}.ts`.
 | `npm run prisma:seed` | Seed inicial |
 | `npm run prisma:studio` | Prisma Studio |
 | `npm run worker:dev` / `worker:start` | Worker de filas |
+| `npm run mcp:dev` / `mcp:start` | Servidor MCP interno |
 
 ---
 
@@ -190,7 +236,7 @@ components/      ui/ (primitivos), layout/, brand/
 lib/             auth/, ai/, meta/, openclaw/, compliance/, services/,
                  prisma, permissions, crypto, audit, env, validations
 prisma/          schema.prisma, migrations/, seed.ts
-workers/         filas BullMQ + worker de jobs
+workers/         filas BullMQ, worker de jobs e MCP interno
 ```
 
 ---

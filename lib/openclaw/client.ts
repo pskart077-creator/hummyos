@@ -30,6 +30,7 @@ async function request<T>(
       ...init,
       headers: {
         "content-type": "application/json",
+        "ngrok-skip-browser-warning": "true",
         authorization: `Bearer ${env.openclaw.authToken}`,
         ...(init.headers ?? {}),
       },

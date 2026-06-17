@@ -141,6 +141,7 @@ async function callOpenClaw(
     headers: {
       Authorization: `Bearer ${gatewayToken}`,
       "Content-Type": "application/json",
+      "ngrok-skip-browser-warning": "true",
       "x-openclaw-agent-id": agentId,
       "x-openclaw-session-key": stableUser,
     },

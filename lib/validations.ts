@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ASSIGNABLE_ROLES } from "./permissions";
+import { ALL_ROLES } from "./permissions";
 
 export const loginSchema = z.object({
   email: z.string().email("E-mail inválido"),
@@ -8,7 +8,7 @@ export const loginSchema = z.object({
 
 export const inviteSchema = z.object({
   email: z.string().email("E-mail inválido"),
-  role: z.enum(ASSIGNABLE_ROLES as [string, ...string[]]),
+  role: z.enum(ALL_ROLES as [string, ...string[]]),
 });
 
 export const acceptInviteSchema = z

@@ -76,3 +76,72 @@ export async function PATCH(
     return handleError(err);
   }
 }
+
+/** Remove um membro da organizacao. id = membershipId */
+export async function DELETE(
+  _req: Request,
+  { params }: { params: { id: string } },
+) {
+  try {
+    const ctx = await getCurrentUser();
+    if (!ctx) return unauthorized();
+    if (!hasPermission(ctx.role, "team:manage")) return forbidden();
+
+    const membership = await prisma.organizationMember.findFirst({
+      where: { id: params.id, organizationId: ctx.organization.id },
+      include: { user: true },
+    });
+    if (!membership) return fail("Membro nao encontrado", 404);
+
+    if (membership.userId === ctx.user.id) {
+      return fail("Voce nao pode remover seu proprio acesso.", 422);
+    }
+
+    if (membership.role === "admin_master" && ctx.role !== "admin_master") {
+      return forbidden("Apenas um Admin Master pode remover outro.");
+    }
+
+    if (membership.role === "admin_master") {
+      const adminMasterCount = await prisma.organizationMember.count({
+        where: {
+          organizationId: ctx.organization.id,
+          role: "admin_master",
+        },
+      });
+
+      if (adminMasterCount <= 1) {
+        return fail("A organizacao precisa manter pelo menos um Admin Master.", 422);
+      }
+    }
+
+    await prisma.$transaction([
+      prisma.organizationMember.delete({ where: { id: membership.id } }),
+      prisma.authSession.deleteMany({ where: { userId: membership.userId } }),
+      prisma.invite.updateMany({
+        where: {
+          organizationId: ctx.organization.id,
+          email: membership.user.email,
+          status: "pending",
+        },
+        data: { status: "revoked" },
+      }),
+    ]);
+
+    await createAuditLog({
+      organizationId: ctx.organization.id,
+      userId: ctx.user.id,
+      action: "team.member_removed",
+      entityType: "membership",
+      entityId: membership.id,
+      metadata: {
+        removedUserId: membership.userId,
+        email: membership.user.email,
+        role: membership.role,
+      },
+    });
+
+    return ok({ removed: true });
+  } catch (err) {
+    return handleError(err);
+  }
+}

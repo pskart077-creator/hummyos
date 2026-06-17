@@ -17,6 +17,9 @@ export async function POST(req: Request) {
     if (!hasPermission(ctx.role, "team:manage")) return forbidden();
 
     const { email, role } = inviteSchema.parse(await req.json());
+    if (role === "admin_master" && ctx.role !== "admin_master") {
+      return forbidden("Apenas Admin Master pode convidar outro Admin Master.");
+    }
 
     const existingMember = await prisma.user.findFirst({
       where: {
@@ -62,9 +65,21 @@ export async function POST(req: Request) {
 
     // O link de convite é retornado para o admin compartilhar
     // (no MVP não há envio de e-mail automático).
-    const inviteUrl = `${env.appUrl}/accept-invite?token=${token}`;
+    const inviteUrl = `${requestOrigin(req) ?? env.appUrl}/accept-invite?token=${token}`;
     return ok({ inviteId: invite.id, inviteUrl });
   } catch (err) {
     return handleError(err);
+  }
+}
+
+function requestOrigin(req: Request) {
+  const forwardedHost = req.headers.get("x-forwarded-host");
+  const forwardedProto = req.headers.get("x-forwarded-proto") ?? "https";
+  if (forwardedHost) return `${forwardedProto}://${forwardedHost}`;
+
+  try {
+    return new URL(req.url).origin;
+  } catch {
+    return null;
   }
 }

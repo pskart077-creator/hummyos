@@ -17,6 +17,8 @@
     "prisma:studio": "prisma studio",
     "worker:dev": "tsx watch workers/index.ts",
     "worker:start": "tsx workers/index.ts",
+    "mcp:dev": "tsx workers/mcp.ts",
+    "mcp:start": "tsx workers/mcp.ts",
     "cf:build": "opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion",
     "cf:deploy": "opennextjs-cloudflare deploy",
     "cf:upload": "opennextjs-cloudflare upload"
@@ -25,6 +27,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@prisma/client": "^5.22.0",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.28.1",
