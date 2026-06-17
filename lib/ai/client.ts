@@ -53,7 +53,7 @@ function truncateForModel(text: string, maxChars: number) {
 /**
  * Cliente de IA unificado.
  * Prioridade:
- * 1. OpenClaw Gateway, se OPENCLAW_GATEWAY_URL e OPENCLAW_GATEWAY_TOKEN existirem
+ * 1. OpenClaw Gateway, se as variaveis do OpenClaw existirem
  * 2. Anthropic
  * 3. OpenAI
  * 4. Fallback local
@@ -64,7 +64,7 @@ export async function chatComplete(
 ): Promise<ChatResult> {
   const provider = opts.provider ?? env.ai.provider;
 
-  if (process.env.OPENCLAW_GATEWAY_URL && process.env.OPENCLAW_GATEWAY_TOKEN) {
+  if (isOpenClawConfigured()) {
     return callOpenClaw(messages, opts);
   }
 
@@ -87,12 +87,12 @@ async function callOpenClaw(
   messages: ChatMessage[],
   opts: ChatOptions = {},
 ): Promise<ChatResult> {
-  const gatewayUrl = process.env.OPENCLAW_GATEWAY_URL;
-  const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN;
-  const agentId = process.env.OPENCLAW_AGENT_ID || "main";
+  const gatewayUrl = getOpenClawUrl();
+  const gatewayToken = getOpenClawToken();
+  const agentId = getOpenClawAgentId();
 
   if (!gatewayUrl || !gatewayToken) {
-    throw new Error("OpenClaw nao configurado no .env.local");
+    throw new Error("OpenClaw nao configurado no ambiente.");
   }
 
   const systemMessages = [
@@ -271,6 +271,34 @@ async function callOpenAI(
   };
 }
 
+function getOpenClawUrl() {
+  return (
+    process.env.OPENCLAW_GATEWAY_URL ||
+    process.env.OPENCLAW_BASE_URL ||
+    ""
+  ).replace(/\/$/, "");
+}
+
+function getOpenClawToken() {
+  return (
+    process.env.OPENCLAW_GATEWAY_TOKEN ||
+    process.env.OPENCLAW_AUTH_TOKEN ||
+    ""
+  );
+}
+
+function getOpenClawAgentId() {
+  return (
+    process.env.OPENCLAW_AGENT_ID ||
+    process.env.OPENCLAW_DEFAULT_AGENT_ID ||
+    "main"
+  );
+}
+
+function isOpenClawConfigured() {
+  return Boolean(getOpenClawUrl() && getOpenClawToken());
+}
+
 /** Modo local: resposta util sem chamar API externa. */
 function localFallback(
   messages: ChatMessage[],
@@ -281,7 +309,7 @@ function localFallback(
 
   const content = [
     "Modo local.",
-    "OpenClaw, Anthropic ou OpenAI nao estao configurados no `.env.local`.",
+    "OpenClaw, Anthropic ou OpenAI nao estao configurados no ambiente.",
     last
       ? `Recebi: "${last.content.slice(0, 280)}".`
       : "Pronto para ajudar a equipe Hummy.",
