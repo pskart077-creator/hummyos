@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth/password";
-import { createSession, setSessionCookie } from "@/lib/auth/session";
+import { createSession, SESSION_COOKIE } from "@/lib/auth/session";
 import { acceptInviteSchema } from "@/lib/validations";
 import { hashToken } from "@/lib/crypto";
 import { ok, fail, handleError, getClientIp } from "@/lib/http";
@@ -68,7 +68,6 @@ export async function POST(req: Request) {
       userAgent: req.headers.get("user-agent"),
       ipAddress: getClientIp(req),
     });
-    setSessionCookie(sessionToken);
 
     await createAuditLog({
       organizationId: invite.organizationId,
@@ -78,7 +77,15 @@ export async function POST(req: Request) {
       entityId: invite.id,
     });
 
-    return ok({ id: user.id, name: user.name });
+    const response = ok({ id: user.id, name: user.name });
+    response.cookies.set(SESSION_COOKIE, sessionToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60,
+    });
+    return response;
   } catch (err) {
     return handleError(err);
   }
