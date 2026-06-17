@@ -14,6 +14,7 @@ import { ASSIGNABLE_ROLES, ROLE_LABELS } from "@/lib/permissions";
 
 type Member = {
   id: string;
+  userId: string;
   role: string;
   name: string;
   email: string;
@@ -164,7 +165,7 @@ export function TeamManager({
                 <TH>Cargo</TH>
                 <TH>Status</TH>
                 <TH>Último login</TH>
-                {canManage && <TH></TH>}
+                {canManage && <TH className="w-[320px] text-right">Ações</TH>}
               </TR>
             </THead>
             <tbody>
@@ -175,7 +176,7 @@ export function TeamManager({
                     <p className="text-xs text-slate-500">{m.email}</p>
                   </TD>
                   <TD>
-                    {canManage && m.id !== currentUserId ? (
+                    {canManage && m.userId !== currentUserId ? (
                       <Select
                         value={m.role}
                         onChange={(e) => changeRole(m.id, e.target.value)}
@@ -196,9 +197,9 @@ export function TeamManager({
                   </TD>
                   <TD className="text-xs text-slate-500">{m.lastLoginAt}</TD>
                   {canManage && (
-                    <TD className="min-w-48">
-                      {m.id !== currentUserId && (
-                        <div className="flex items-center justify-end gap-2">
+                    <TD className="w-[320px] text-right">
+                      {m.userId !== currentUserId ? (
+                        <div className="inline-flex items-center justify-end gap-2 whitespace-nowrap">
                           <Button
                             size="sm"
                             variant="ghost"
@@ -218,6 +219,8 @@ export function TeamManager({
                             <Trash2 size={14} /> Remover
                           </Button>
                         </div>
+                      ) : (
+                        <span className="text-xs text-slate-500">Você</span>
                       )}
                     </TD>
                   )}
@@ -242,7 +245,7 @@ export function TeamManager({
                   <TH>E-mail</TH>
                   <TH>Cargo</TH>
                   <TH>Criado</TH>
-                  {canManage && <TH></TH>}
+                  {canManage && <TH className="w-[220px] text-right">Ações</TH>}
                 </TR>
               </THead>
               <tbody>
@@ -252,14 +255,14 @@ export function TeamManager({
                     <TD>{ROLE_LABELS[i.role as keyof typeof ROLE_LABELS]}</TD>
                     <TD className="text-xs text-slate-500">{i.createdAt}</TD>
                     {canManage && (
-                      <TD className="text-right">
+                      <TD className="w-[220px] text-right">
                         <Button
                           size="sm"
-                          variant="ghost"
+                          variant="danger"
                           loading={busyAction === `invite:${i.id}`}
                           onClick={() => cancelInvite(i.id, i.email)}
                         >
-                          <XCircle size={14} /> Cancelar
+                          <XCircle size={14} /> Cancelar convite
                         </Button>
                       </TD>
                     )}
